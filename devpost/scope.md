@@ -1,27 +1,26 @@
 # Scope: DocuDiff AI
 
 ## 1. Problem Statement
-People routinely sign revised terms, rental leases, and service agreements without reading dense fine-print modifications. Standard diff tools only identify raw character changes without interpreting legal or financial liabilities.
+Users routinely accept revised leases, employment contracts, and digital terms of service without reviewing modified clauses. Traditional diff utilities only highlight raw character additions or deletions without interpreting the legal, financial, or operational liabilities introduced by the changes.
 
 ## 2. Solution Overview
-DocuDiff AI is a single-screen utility that compares an original document against a revised version using a lightweight LLM API. It categorizes changes into risk tiers (High, Medium, Low) and explains practical implications in plain English.
+DocuDiff AI is an automated contract watchdog built on a decoupled, production-ready architecture. It ingests an original document and an amended document, analyzes substantive variances through Gemini 2.5 Flash via a FastAPI backend, and renders an interactive, color-coded risk assessment on a responsive React frontend.
 
 ## 3. In-Scope (Hackathon MVP)
-- Side-by-side text input boxes (Original vs. Revised).
-- One-click "Load Sample Lease" button for instant testing.
-- Single API call returning structured JSON diff analysis.
-- Risk classification (High = financial penalties/liability; Medium = operational/timeline changes; Low = formatting/wording tweaks).
-- Visual UI with severity badges and plain-English breakdown.
-- Copyable markdown audit summary.
+- Decoupled client-server architecture: FastAPI backend REST service and React (Vite + Tailwind CSS) client.
+- Zero-friction environment configuration: Relative API pathing with Vite dev-server proxy for local execution, switchable to cloud deployment via a single environment variable.
+- Side-by-side text ingestion panes with a one-click sample loader for rapid evaluation.
+- Asynchronous analysis endpoint executing a single, structured schema call to Gemini 2.5 Flash.
+- Severity classification: High Risk (financial penalties, strict liabilities, forfeit clauses), Medium Risk (deadlines, operational adjustments), and Low Risk (wording or formatting tweaks).
+- Visual status dashboard with severity badges, plain-English impact breakdowns, and actionable next steps.
 
-## 4. Out-of-Scope (Deliberately Excluded)
-- User logins, auth tokens, and session management.
-- External database integrations (PostgreSQL, MongoDB).
-- Multi-page OCR / scanned image ingestion.
-- Multi-lingual contract translation.
-- Automated legal drafting or multi-user signing.
+## 4. Out-of-Scope (Deliberately Deferred)
+- User authentication, account management, and database persistence.
+- Scanned physical document OCR processing.
+- Multi-party digital signature collection.
+- Multi-language contract translation.
 
 ## 5. Success Criteria
-- Complete execution turnaround under 6 seconds per comparison.
-- Stateless, in-memory execution via a local browser UI.
-- Free-tier API usage remaining well within standard rate limits.
+- Sub-5-second analysis turnaround on typical contractual amendments.
+- Single API round-trip per user action to operate safely inside free-tier quota limits.
+- Zero code modifications required between local execution and cloud deployment.
