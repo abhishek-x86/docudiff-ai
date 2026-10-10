@@ -135,7 +135,7 @@ export default function App() {
               <div className="flex items-center space-x-2">
                 <h1 className="text-xl font-bold tracking-tight text-white">DocuDiff AI</h1>
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-950 text-indigo-300 border border-indigo-800/60">
-                  Gemini 2.5 Flash
+                  Gemini 3.5 Flash Lite
                 </span>
               </div>
               <p className="text-xs text-slate-400">

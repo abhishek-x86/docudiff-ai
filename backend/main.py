@@ -37,6 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize Client globally once (avoids repeated connection overhead)
+api_key = os.getenv("GEMINI_API_KEY", "").strip()
+client = genai.Client(api_key=api_key) if api_key else None
+
 
 class AnalyzeRequest(BaseModel):
     original_text: str = Field(..., description="Baseline original document or agreement text")
@@ -66,30 +70,8 @@ Categorize risk as:
 - MEDIUM: deadlines, operational shifts, notice periods, procedural changes, working hours.
 - LOW: editorial wording, style adjustments, cosmetic formatting, clarifications without substantive legal shift.
 
-For change_type, use:
-- MODIFIED: Existing clause altered.
-- ADDED: Completely new clause or condition inserted.
-- REMOVED: Prior clause or protection omitted.
-
-Provide clear, accessible plain-English explanations and practical, actionable advice.
-
-Return a valid JSON object matching the requested schema exactly:
-{
-  "summary": "1-2 sentence executive overview",
-  "high_risk_count": 0,
-  "medium_risk_count": 0,
-  "low_risk_count": 0,
-  "changes": [
-    {
-      "clause": "Clause / Section Title",
-      "risk": "HIGH",
-      "change_type": "MODIFIED",
-      "plain_explanation": "Explanation here",
-      "advice": "Actionable advice here"
-    }
-  ]
-}
-"""
+For change_type: MODIFIED, ADDED, or REMOVED.
+Provide direct, concise plain-English explanations and actionable advice. Do not output conversational filler."""
 
 
 @app.get("/health")
@@ -108,39 +90,27 @@ def analyze_documents(payload: AnalyzeRequest):
             detail="Both original_text and revised_text must be provided and non-empty."
         )
 
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key or api_key == "your_actual_key_here":
+    if not client:
         raise HTTPException(
             status_code=500,
-            detail="GEMINI_API_KEY is not configured or contains placeholder value. Please set a valid GEMINI_API_KEY in your environment or backend/.env file."
+            detail="GEMINI_API_KEY is missing or invalid in backend environment."
         )
 
-    try:
-        client = genai.Client(api_key=api_key)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to initialize Google GenAI client: {str(e)}"
-        )
-
-    user_prompt = f"""Compare the following two documents and provide a complete structured audit:
-
-=== DOCUMENT A (ORIGINAL) ===
+    user_prompt = f"""=== DOCUMENT A (ORIGINAL) ===
 {orig}
 
 === DOCUMENT B (REVISED) ===
-{rev}
-"""
+{rev}"""
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash-lite",
             contents=user_prompt,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 response_mime_type="application/json",
                 response_schema=AnalyzeResponse,
-                temperature=0.2,
+                temperature=0.1,
             ),
         )
     except Exception as e:
@@ -148,7 +118,6 @@ def analyze_documents(payload: AnalyzeRequest):
             status_code=500,
             detail=f"Gemini API request failed: {str(e)}"
         )
-
     if not response or not response.text:
         raise HTTPException(
             status_code=500,
@@ -159,14 +128,10 @@ def analyze_documents(payload: AnalyzeRequest):
         parsed_data = json.loads(response.text)
         validated_response = AnalyzeResponse(**parsed_data)
         
-        # Ensure counts accurately reflect changes list
-        high_cnt = sum(1 for c in validated_response.changes if c.risk == "HIGH")
-        med_cnt = sum(1 for c in validated_response.changes if c.risk == "MEDIUM")
-        low_cnt = sum(1 for c in validated_response.changes if c.risk == "LOW")
-        
-        validated_response.high_risk_count = high_cnt
-        validated_response.medium_risk_count = med_cnt
-        validated_response.low_risk_count = low_cnt
+        # Recount to make sure metrics are exact
+        validated_response.high_risk_count = sum(1 for c in validated_response.changes if c.risk == "HIGH")
+        validated_response.medium_risk_count = sum(1 for c in validated_response.changes if c.risk == "MEDIUM")
+        validated_response.low_risk_count = sum(1 for c in validated_response.changes if c.risk == "LOW")
 
         return validated_response
     except Exception as e:
@@ -180,4 +145,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
