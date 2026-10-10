@@ -8,3 +8,81 @@
   }
 }
 
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+  
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Reset container backgrounds for high contrast printing */
+  .bg-slate-900,
+  .bg-slate-950,
+  .bg-slate-900\/60,
+  .bg-slate-900\/80 {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  .text-white,
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  .text-slate-400,
+  .text-slate-500 {
+    color: #475569 !important;
+  }
+
+  /* Keep risk colors readable on white paper */
+  .bg-red-950\/10,
+  .bg-red-950\/20 {
+    background-color: #fef2f2 !important;
+    border-color: #f87171 !important;
+  }
+  .text-red-400,
+  .text-red-300,
+  .text-red-100 {
+    color: #b91c1c !important;
+  }
+
+  .bg-amber-950\/10,
+  .bg-amber-950\/20 {
+    background-color: #fffbeb !important;
+    border-color: #fbbf24 !important;
+  }
+  .text-amber-400,
+  .text-amber-300,
+  .text-amber-100 {
+    color: #b45309 !important;
+  }
+
+  .bg-emerald-950\/10,
+  .bg-emerald-950\/20 {
+    background-color: #ecfdf5 !important;
+    border-color: #34d399 !important;
+  }
+  .text-emerald-400,
+  .text-emerald-300,
+  .text-emerald-100 {
+    color: #047857 !important;
+  }
+
+  /* Ensure card breaks do not slice awkwardly across pages */
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

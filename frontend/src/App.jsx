@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   FileText,
   AlertTriangle,
@@ -11,7 +11,10 @@ import {
   RefreshCw,
   ArrowRight,
   Sparkles,
-  ExternalLink,
+  Upload,
+  Download,
+  Printer,
+  FileUp,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -43,6 +46,85 @@ export default function App() {
   const [report, setReport] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // File upload state
+  const [isExtractingOriginal, setIsExtractingOriginal] = useState(false);
+  const [isExtractingRevised, setIsExtractingRevised] = useState(false);
+  const [isDragOverA, setIsDragOverA] = useState(false);
+  const [isDragOverB, setIsDragOverB] = useState(false);
+
+  const fileInputRefA = useRef(null);
+  const fileInputRefB = useRef(null);
+
+  // Dynamic API Base URL with fallback to relative path (dev proxy) or localhost
+  const rawApiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+  const apiBase = rawApiBase || '';
+
+  const handleFileUpload = async (file, target) => {
+    if (!file) return;
+
+    const isTargetA = target === 'original';
+    const setExtracting = isTargetA ? setIsExtractingOriginal : setIsExtractingRevised;
+    const setText = isTargetA ? setOriginalText : setRevisedText;
+
+    setExtracting(true);
+    setError(null);
+
+    const fileNameLower = file.name.toLowerCase();
+
+    // Fast-path client-side read for plain text files
+    if (fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md')) {
+      try {
+        const textContent = await file.text();
+        setText(textContent);
+      } catch (err) {
+        setError(`Failed to read file ${file.name}: ${err.message}`);
+      } finally {
+        setExtracting(false);
+      }
+      return;
+    }
+
+    // For PDF files, extract via backend endpoint
+    if (fileNameLower.endsWith('.pdf')) {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const extractEndpoint = `${apiBase}/api/extract-text`;
+        const res = await fetch(extractEndpoint, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Upload failed with status ${res.status}`);
+        }
+
+        const data = await res.json();
+        setText(data.text);
+      } catch (err) {
+        setError(`Failed to extract text from PDF (${file.name}): ${err.message}`);
+      } finally {
+        setExtracting(false);
+      }
+      return;
+    }
+
+    setError('Unsupported file type. Please upload a .pdf, .txt, or .md document.');
+    setExtracting(false);
+  };
+
+  const handleDrop = (e, target) => {
+    e.preventDefault();
+    if (target === 'original') setIsDragOverA(false);
+    if (target === 'revised') setIsDragOverB(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileUpload(e.dataTransfer.files[0], target);
+    }
+  };
+
   const handleLoadSample = () => {
     setOriginalText(SAMPLE_ORIGINAL);
     setRevisedText(SAMPLE_REVISED);
@@ -65,7 +147,6 @@ export default function App() {
     setLoading(true);
     setError(null);
 
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
     const endpoint = `${apiBase}/api/analyze`;
 
     try {
@@ -96,10 +177,11 @@ export default function App() {
     }
   };
 
-  const handleCopyMarkdown = () => {
-    if (!report) return;
+  const buildMarkdownReport = () => {
+    if (!report) return '';
 
     let md = `# DocuDiff AI - Agreement Risk Audit Report\n\n`;
+    md += `*Generated on: ${new Date().toLocaleString()}*\n\n`;
     md += `## Executive Summary\n${report.summary}\n\n`;
     md += `### Risk Breakdown\n`;
     md += `- **High Risk:** ${report.high_risk_count}\n`;
@@ -108,16 +190,42 @@ export default function App() {
     md += `## Itemized Clause Changes\n\n`;
 
     report.changes.forEach((item, index) => {
-      md += `### ${index + 1}. [${item.risk}] ${item.clause} (${item.change_type})\n`;
+      md += `### ${index + 1}. [${item.risk} RISK] ${item.clause} (${item.change_type})\n`;
       md += `**Explanation:** ${item.plain_explanation}\n\n`;
       md += `**Actionable Advice:** ${item.advice}\n\n`;
       md += `---\n\n`;
     });
 
+    return md;
+  };
+
+  const handleCopyMarkdown = () => {
+    const md = buildMarkdownReport();
+    if (!md) return;
+
     navigator.clipboard.writeText(md).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });
+  };
+
+  const handleDownloadMarkdown = () => {
+    const md = buildMarkdownReport();
+    if (!md) return;
+
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `DocuDiff-Audit-Report-${Date.now()}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintReport = () => {
+    window.print();
   };
 
   return (
@@ -171,14 +279,14 @@ export default function App() {
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Intro Banner */}
-        <section className="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
+        <section className="no-print bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 rounded-2xl p-6 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
               <h2 className="text-base sm:text-lg font-semibold text-slate-200 flex items-center gap-2">
                 <span>Never sign modified terms blind.</span>
               </h2>
               <p className="text-sm text-slate-400 max-w-3xl">
-                Compare original agreements vs revisions. DocuDiff analyzes fee jumps, forfeit clauses, notice shrinkages, and liability shifts in seconds.
+                Compare original agreements vs revisions. Upload PDF or TXT contracts or paste directly. DocuDiff analyzes fee jumps, forfeit clauses, notice shrinkages, and liability shifts in seconds.
               </p>
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/60 px-3 py-2 rounded-lg border border-slate-800 shrink-0">
@@ -188,47 +296,149 @@ export default function App() {
           </div>
         </section>
 
-        {/* Input Text Areas */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Hidden File Inputs */}
+        <input
+          type="file"
+          ref={fileInputRefA}
+          accept=".pdf,.txt,.md"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              handleFileUpload(e.target.files[0], 'original');
+              e.target.value = '';
+            }
+          }}
+        />
+        <input
+          type="file"
+          ref={fileInputRefB}
+          accept=".pdf,.txt,.md"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              handleFileUpload(e.target.files[0], 'revised');
+              e.target.value = '';
+            }
+          }}
+        />
+
+        {/* Input Text Areas & Drag-and-Drop Zones */}
+        <div className="no-print grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Original Text Pane */}
-          <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm focus-within:border-indigo-500/50 transition">
-            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOverA(true);
+            }}
+            onDragLeave={() => setIsDragOverA(false)}
+            onDrop={(e) => handleDrop(e, 'original')}
+            className={cn(
+              "flex flex-col bg-slate-900/60 border rounded-xl overflow-hidden shadow-sm transition relative",
+              isDragOverA
+                ? "border-indigo-400 bg-indigo-950/20 ring-2 ring-indigo-500/30"
+                : "border-slate-800 focus-within:border-indigo-500/50"
+            )}
+          >
+            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
                 <span className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-slate-300">
                   Document A: Original Agreement
                 </span>
               </div>
-              <span className="text-xs text-slate-500">
-                {originalText.length} characters
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">
+                  {originalText.length} chars
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRefA.current?.click()}
+                  disabled={isExtractingOriginal}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 rounded-md transition shadow-xs"
+                  title="Upload .pdf, .txt, or .md file"
+                >
+                  {isExtractingOriginal ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  ) : (
+                    <FileUp className="w-3.5 h-3.5 text-indigo-400" />
+                  )}
+                  <span>{isExtractingOriginal ? 'Extracting...' : 'Upload PDF/TXT'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Drag overlay notice if hovering */}
+            {isDragOverA && (
+              <div className="absolute inset-0 top-12 bg-indigo-950/80 backdrop-blur-xs flex flex-col items-center justify-center z-10 text-indigo-200 pointer-events-none">
+                <Upload className="w-8 h-8 text-indigo-400 animate-bounce mb-2" />
+                <p className="text-sm font-semibold">Drop PDF or TXT to extract into Document A</p>
+              </div>
+            )}
+
             <textarea
               value={originalText}
               onChange={(e) => setOriginalText(e.target.value)}
-              placeholder="Paste original contract, lease, or terms of service here..."
+              placeholder="Paste original contract or drop a PDF/TXT file here..."
               rows={14}
               className="w-full p-4 bg-transparent text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none resize-y font-mono leading-relaxed"
             />
           </div>
 
           {/* Revised Text Pane */}
-          <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm focus-within:border-indigo-500/50 transition">
-            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOverB(true);
+            }}
+            onDragLeave={() => setIsDragOverB(false)}
+            onDrop={(e) => handleDrop(e, 'revised')}
+            className={cn(
+              "flex flex-col bg-slate-900/60 border rounded-xl overflow-hidden shadow-sm transition relative",
+              isDragOverB
+                ? "border-indigo-400 bg-indigo-950/20 ring-2 ring-indigo-500/30"
+                : "border-slate-800 focus-within:border-indigo-500/50"
+            )}
+          >
+            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                 <span className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-indigo-300">
                   Document B: Revised Agreement
                 </span>
               </div>
-              <span className="text-xs text-slate-500">
-                {revisedText.length} characters
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">
+                  {revisedText.length} chars
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRefB.current?.click()}
+                  disabled={isExtractingRevised}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 rounded-md transition shadow-xs"
+                  title="Upload .pdf, .txt, or .md file"
+                >
+                  {isExtractingRevised ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                  ) : (
+                    <FileUp className="w-3.5 h-3.5 text-indigo-400" />
+                  )}
+                  <span>{isExtractingRevised ? 'Extracting...' : 'Upload PDF/TXT'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Drag overlay notice if hovering */}
+            {isDragOverB && (
+              <div className="absolute inset-0 top-12 bg-indigo-950/80 backdrop-blur-xs flex flex-col items-center justify-center z-10 text-indigo-200 pointer-events-none">
+                <Upload className="w-8 h-8 text-indigo-400 animate-bounce mb-2" />
+                <p className="text-sm font-semibold">Drop PDF or TXT to extract into Document B</p>
+              </div>
+            )}
+
             <textarea
               value={revisedText}
               onChange={(e) => setRevisedText(e.target.value)}
-              placeholder="Paste amended or proposed contract terms here..."
+              placeholder="Paste amended contract terms or drop a PDF/TXT file here..."
               rows={14}
               className="w-full p-4 bg-transparent text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none resize-y font-mono leading-relaxed"
             />
@@ -236,10 +446,10 @@ export default function App() {
         </div>
 
         {/* Primary Action Button */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+        <div className="no-print flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
           <button
             onClick={handleAnalyze}
-            disabled={loading}
+            disabled={loading || isExtractingOriginal || isExtractingRevised}
             type="button"
             className={cn(
               "w-full sm:w-auto min-w-[240px] px-8 py-3.5 rounded-xl font-semibold text-sm transition-all shadow-lg flex items-center justify-center gap-2",
@@ -264,10 +474,10 @@ export default function App() {
 
         {/* Error Alert Banner */}
         {error && (
-          <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/80 text-red-200 flex items-start gap-3 shadow-md animate-in fade-in duration-200">
+          <div className="no-print p-4 rounded-xl bg-red-950/40 border border-red-800/80 text-red-200 flex items-start gap-3 shadow-md animate-in fade-in duration-200">
             <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
             <div className="text-sm space-y-1">
-              <p className="font-semibold text-red-300">Audit Request Failed</p>
+              <p className="font-semibold text-red-300">Action Notice</p>
               <p className="text-red-200/90 leading-relaxed">{error}</p>
             </div>
           </div>
@@ -290,29 +500,53 @@ export default function App() {
                 </p>
               </div>
 
-              <button
-                onClick={handleCopyMarkdown}
-                type="button"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-lg border border-slate-700 transition shadow-sm"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    <span>Report Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 text-slate-300" />
-                    <span>Copy Report as Markdown</span>
-                  </>
-                )}
-              </button>
+              {/* Export Button Toolbar */}
+              <div className="no-print flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleCopyMarkdown}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-lg border border-slate-700 transition shadow-sm"
+                  title="Copy markdown formatted audit report"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-300 font-semibold">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-slate-300" />
+                      <span>Copy Report</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleDownloadMarkdown}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-medium rounded-lg border border-slate-700 transition shadow-sm"
+                  title="Download report as a .md file"
+                >
+                  <Download className="w-4 h-4 text-indigo-400" />
+                  <span>Export Markdown</span>
+                </button>
+
+                <button
+                  onClick={handlePrintReport}
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs sm:text-sm font-medium rounded-lg border border-indigo-500/50 transition shadow-sm"
+                  title="Export or print as a clean PDF view"
+                >
+                  <Printer className="w-4 h-4 text-white" />
+                  <span>Export PDF / Print</span>
+                </button>
+              </div>
             </div>
 
             {/* KPI Metric Badges */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* High Risk */}
-              <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-5 flex items-center justify-between">
+              <div className="bg-red-950/20 border border-red-900/50 rounded-xl p-5 flex items-center justify-between break-inside-avoid">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wider text-red-400">
                     High Risk Items
@@ -330,7 +564,7 @@ export default function App() {
               </div>
 
               {/* Medium Risk */}
-              <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-5 flex items-center justify-between">
+              <div className="bg-amber-950/20 border border-amber-900/50 rounded-xl p-5 flex items-center justify-between break-inside-avoid">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wider text-amber-400">
                     Medium Risk Items
@@ -348,7 +582,7 @@ export default function App() {
               </div>
 
               {/* Low Risk */}
-              <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl p-5 flex items-center justify-between">
+              <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl p-5 flex items-center justify-between break-inside-avoid">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wider text-emerald-400">
                     Low Risk Items
@@ -367,7 +601,7 @@ export default function App() {
             </div>
 
             {/* Executive Summary Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm break-inside-avoid">
               <div className="flex items-center gap-2 mb-2 text-indigo-400">
                 <Sparkles className="w-4 h-4" />
                 <h4 className="text-xs font-bold uppercase tracking-wider">
@@ -396,7 +630,7 @@ export default function App() {
                       <div
                         key={index}
                         className={cn(
-                          "rounded-xl border p-5 transition-all shadow-sm",
+                          "rounded-xl border p-5 transition-all shadow-sm break-inside-avoid",
                           isHigh && "bg-red-950/10 border-red-900/40 hover:border-red-800/60",
                           isMed && "bg-amber-950/10 border-amber-900/40 hover:border-amber-800/60",
                           isLow && "bg-emerald-950/10 border-emerald-900/40 hover:border-emerald-800/60"
@@ -470,11 +704,11 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 py-6 mt-12 text-center text-xs text-slate-500">
+      <footer className="no-print border-t border-slate-800 bg-slate-950 py-6 mt-12 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
           <p>DocuDiff AI &copy; 2026. For informational and risk audit purposes only. Not formal legal advice.</p>
           <div className="flex items-center gap-4 text-slate-400">
-            <span>Powered by Gemini 2.5 Flash</span>
+            <span>Powered by Gemini 3.5 Flash Lite</span>
             <span>&bull;</span>
             <span>FastAPI &amp; React</span>
           </div>
@@ -483,4 +717,3 @@ export default function App() {
     </div>
   );
 }
-

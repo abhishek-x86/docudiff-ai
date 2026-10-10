@@ -1,19 +1,21 @@
 import os
+import io
 import json
 from typing import List, Literal
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+import pypdf
 
 load_dotenv()
 
 app = FastAPI(
     title="DocuDiff AI API",
-    description="Automated legal and policy agreement delta analysis powered by Gemini 2.5 Flash",
-    version="1.0.0",
+    description="Automated legal and policy agreement delta analysis powered by Gemini 3.5 Flash Lite",
+    version="1.1.0",
 )
 
 # Configure CORS
@@ -26,6 +28,7 @@ else:
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:8000",
         "*",
     ]
 
@@ -40,6 +43,12 @@ app.add_middleware(
 # Initialize Client globally once (avoids repeated connection overhead)
 api_key = os.getenv("GEMINI_API_KEY", "").strip()
 client = genai.Client(api_key=api_key) if api_key else None
+
+
+class ExtractTextResponse(BaseModel):
+    text: str = Field(..., description="Extracted plain text content")
+    filename: str = Field(..., description="Source filename")
+    page_count: int = Field(default=1, description="Number of pages if PDF, else 1")
 
 
 class AnalyzeRequest(BaseModel):
@@ -77,6 +86,66 @@ Provide direct, concise plain-English explanations and actionable advice. Do not
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "DocuDiff AI Backend"}
+
+
+@app.post("/api/extract-text", response_model=ExtractTextResponse)
+async def extract_text_from_file(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename missing from upload.")
+
+    filename_lower = file.filename.lower()
+    content_bytes = await file.read()
+
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if filename_lower.endswith(".pdf"):
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(content_bytes))
+            pages_text = []
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    pages_text.append(page_text.strip())
+            
+            full_text = "\n\n".join(pages_text).strip()
+            if not full_text:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Could not extract text from the PDF. It may be scanned or empty."
+                )
+
+            return ExtractTextResponse(
+                text=full_text,
+                filename=file.filename,
+                page_count=len(reader.pages)
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to process PDF document: {str(e)}"
+            )
+    elif filename_lower.endswith(".txt") or filename_lower.endswith(".md"):
+        try:
+            text = content_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                text = content_bytes.decode("latin-1")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Encoding error reading text file: {str(e)}")
+        
+        return ExtractTextResponse(
+            text=text.strip(),
+            filename=file.filename,
+            page_count=1
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file format. Please upload a .pdf, .txt, or .md file."
+        )
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
