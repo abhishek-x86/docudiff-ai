@@ -1,2 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
 .env
-ai-tool/
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+.coverage
+.DS_Store
