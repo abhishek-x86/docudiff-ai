@@ -15,3 +15,5 @@ venv/
 .coverage
 .DS_Store
 test_pdfs.py
+contract_v1_original.pdf
+contract_v2_revised.pdf
