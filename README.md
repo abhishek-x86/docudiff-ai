@@ -7,7 +7,9 @@
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=FFD62E)](https://vitejs.dev)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-
+[![Live Demo](https://img.shields.io/badge/Demo-Live_App-00C7B7?style=for-the-badge&logo=vercel&logoColor=white)](https://docudiff-ai.vercel.app)
+[![API Docs](https://img.shields.io/badge/API-Swagger_Docs-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://docudiff-ai.onrender.com/docs)
+[![Backend Status](https://img.shields.io/badge/API-Health_Check-22C55E?style=for-the-badge&logo=render&logoColor=white)](https://docudiff-ai.onrender.com/health)
 ---
 
 ## 📌 Why I Built This
