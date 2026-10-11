@@ -14,3 +14,4 @@ venv/
 .pytest_cache/
 .coverage
 .DS_Store
+test_pdfs.py
